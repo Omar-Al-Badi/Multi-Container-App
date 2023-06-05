@@ -1,0 +1,89 @@
+- name: Provision Jenkins server
+  hosts: all
+  remote_user: ubuntu
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name: ca-certificates,curl,gnupg
+        state: present
+        update_cache: yes
+
+    - name: Create directory for apt keyrings
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download and install Docker apt key
+      shell: |
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        sudo chmod a+r /etc/apt/keyrings/docker.gpg
+      args:
+        executable: /bin/bash
+
+    - name: Add Docker repository to apt sources
+      lineinfile:
+        dest: /etc/apt/sources.list.d/docker.list
+        line: 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu jammy stable'
+        regexp: '^deb.*docker.*'
+        state: present
+      args:
+        create: yes
+
+    - name: Update apt cache after adding Docker repository
+      apt:
+        update_cache: yes
+
+    - name: Install Docker packages
+      apt:
+        name: docker-ce,docker-ce-cli,containerd.io,docker-buildx-plugin,docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Update apt cache after installing Docker
+      apt:
+        update_cache: yes
+
+    - name: Install OpenJDK 11 JRE
+      apt:
+        name: openjdk-11-jre
+        state: present
+        update_cache: yes
+
+    - name: Ensure the jenkins apt repository key is installed
+      apt_key: url=https://pkg.jenkins.io/debian/jenkins.io-2023.key state=present
+      become: yes
+
+    - name: Ensure the jenkins repository is configured
+      apt_repository: repo='deb https://pkg.jenkins.io/debian-stable binary/' state=present
+      become: yes
+
+    - name: Ensure jenkins is installed
+      apt: name=jenkins update_cache=yes
+      become: yes
+
+    - name: Add jenkins user to docker group
+      user:
+        name: jenkins
+        groups: docker
+        append: yes
+
+    - name: Allow incoming traffic on port 8080
+      ufw:
+        rule: allow
+        port: 8080
+
+    - name: Restart Jenkins service
+      service:
+        name: jenkins
+        state: restarted
+
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
